@@ -673,6 +673,24 @@ class WidgetFactory extends WidgetFactoryResetter with AnchorWidgetFactory {
     return false;
   }
 
+  Future<bool> onTapUrlV2(String url) async {
+    final handledViaCallback = await onTapCallback(url);
+    if (handledViaCallback) {
+      return true;
+    }
+
+    final idPrefix = '${_widget?.baseUrl ?? ''}#';
+    if (url.startsWith(idPrefix)) {
+      final id = url.substring(idPrefix.length);
+      final handledViaAnchor = await onTapAnchorWrapperV2(id);
+      if (handledViaAnchor) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   /// Parses [tree] for build ops and text styles.
   void parse(BuildTree tree) {
     final attrs = tree.element.attributes;

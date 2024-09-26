@@ -223,6 +223,8 @@ class HtmlWidgetState extends State<HtmlWidget> {
   /// Scrolls to make sure the requested anchor is as visible as possible.
   Future<bool> scrollToAnchor(String id) => _wf.onTapUrl('#$id');
 
+  Future<bool> scrollToAnchorV2(String id) => _wf.onTapUrlV2('#$id');
+
   Future<Widget> _buildAsync() async {
     if (widget.html.isEmpty) {
       return Future.sync(() => _sliverOrWidget0);
