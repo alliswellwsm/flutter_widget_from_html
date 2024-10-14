@@ -49,6 +49,9 @@ class HtmlWidget extends StatefulWidget {
   /// The custom loading builder.
   final OnLoadingBuilder? onLoadingBuilder;
 
+  /// Callback when buildAsync finished
+  final VoidCallback? onLoadingComplete;
+
   /// The callback when user taps an image.
   final void Function(ImageMetadata imageMetadata)? onTapImage;
 
@@ -104,6 +107,7 @@ class HtmlWidget extends StatefulWidget {
     super.key,
     this.onErrorBuilder,
     this.onLoadingBuilder,
+    this.onLoadingComplete,
     this.onTapImage,
     this.onTapUrl,
     List<dynamic>? rebuildTriggers,
@@ -192,6 +196,7 @@ class HtmlWidgetState extends State<HtmlWidget> {
       return FutureBuilder<Widget>(
         builder: (context, snapshot) {
           if (snapshot.hasData) {
+            widget.onLoadingComplete?.call();
             return snapshot.requireData;
           } else if (snapshot.hasError) {
             return _sliverToBoxAdapterIfNeeded(
