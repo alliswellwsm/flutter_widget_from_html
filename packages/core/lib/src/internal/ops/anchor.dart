@@ -101,8 +101,28 @@ class AnchorRegistry {
     return completer.future;
   }
 
-  Future<void> _ensureVisible(
-    String id, {
+  Future<bool> ensureVisibleV2(String id, {
+    Curve curve = Curves.easeIn,
+    Duration duration = const Duration(milliseconds: 100),
+    Curve jumpCurve = Curves.linear,
+    Duration jumpDuration = Duration.zero,
+  }) {
+    _logger.info('Trying to make #$id visible...');
+    final completer = Completer<bool>();
+    _ensureVisibleV2(
+      id,
+      completer: completer,
+      curve: curve,
+      duration: duration,
+      jumpCurve: jumpCurve,
+      jumpDuration: jumpDuration,
+      prevMax: null,
+      prevMin: null,
+    );
+    return completer.future;
+  }
+
+  Future<void> _ensureVisible(String id, {
     required Completer<bool> completer,
     required Curve curve,
     required Duration duration,
@@ -224,6 +244,129 @@ class AnchorRegistry {
     return true;
   }
 
+  Future<void> _ensureVisibleV2(String id, {
+    required Completer<bool> completer,
+    required Curve curve,
+    required Duration duration,
+    required Curve jumpCurve,
+    required Duration jumpDuration,
+    required int? prevMax,
+    required int? prevMin,
+  }) async {
+    final anchor = _anchorById[id];
+    if (anchor == null) {
+      _logger.warning('Could not ensure #$id visible: no anchor');
+      return completer.complete(false);
+    }
+
+    final anchorContext = anchor.currentContext;
+    if (anchorContext != null) {
+      _logger.info(() => 'Scrolling to $anchor...');
+      return completer.complete(
+        _ensureVisibleContextV2(
+          alignment: 0.5,
+          anchorContext,
+          curve: curve,
+          duration: duration,
+        ),
+      );
+    }
+
+    if (_bodyItemIndeces.isEmpty) {
+      _logger.warning('Could not ensure #$id visible: no body items');
+      return completer.complete(false);
+    }
+    final current = _bodyItemIndeces.toList(growable: false);
+    final currentMin = current.reduce(min);
+    final currentMax = current.reduce(max);
+    final effectiveMin = min(prevMin ?? currentMin, currentMin);
+    final effectiveMax = max(prevMax ?? currentMax, currentMax);
+
+    final abii = _indexByAnchor[anchor];
+    final anchorMin = abii?.min ?? effectiveMin;
+    final anchorMax = abii?.max ?? effectiveMax;
+
+    var movedOk = false;
+    if (anchorMin < effectiveMin) {
+      // target is above: scroll the header to the bottom of viewport
+      final header = _bodyItemKeys[currentMin * 2];
+      _logger.info(() => 'Scrolling up to $header...');
+      movedOk = await _ensureVisibleContextV2(
+        header.currentContext,
+        alignment: 1.0,
+        curve: jumpCurve,
+        duration: jumpDuration,
+      );
+    } else if (anchorMax > effectiveMax) {
+      // target is below: scroll the footer to the top of viewport
+      final footer = _bodyItemKeys[currentMax * 2 + 1];
+      _logger.info(() => 'Scrolling down to $footer...');
+      movedOk = await _ensureVisibleContextV2(
+        footer.currentContext,
+        curve: jumpCurve,
+        duration: jumpDuration,
+      );
+    }
+
+    if (!movedOk) {
+      _logger.warning('Could not ensure #$id visible: scroll failure');
+      return completer.complete(false);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback(
+          (_) =>
+          _ensureVisibleV2(
+            id,
+            completer: completer,
+            curve: curve,
+            duration: duration,
+            jumpCurve: jumpCurve,
+            jumpDuration: jumpDuration,
+            prevMax: effectiveMax,
+            prevMin: effectiveMin,
+          ),
+    );
+  }
+
+  Future<bool> _ensureVisibleContextV2(BuildContext? context, {
+    double alignment = 0.0,
+    required Curve curve,
+    required Duration duration,
+  }) async {
+    final renderObject = context?.findRenderObject();
+    if (renderObject == null) {
+      return false;
+    }
+
+    ScrollableState? scrollState;
+    if (_bodyItemIndeces.isNotEmpty) {
+      final currentIndex = _bodyItemIndeces.first;
+      final currentKey = _bodyItemKeys[currentIndex * 2];
+      final currentContext = currentKey.currentContext;
+      if (currentContext != null) {
+        // we have body key, find the nearest scrollable accestor
+        // should work for ListView render mode
+        scrollState = Scrollable.maybeOf(currentContext);
+      }
+    }
+    // plan B: look for scrollable from the root build context
+    // should work for Column, SliverList render mode
+    scrollState ??= Scrollable.maybeOf(_rootContext);
+
+    final position = scrollState?.position;
+    if (position == null) {
+      return false;
+    }
+
+    await Scrollable.ensureVisible(
+      context!,
+      alignment: alignment,
+      curve: curve,
+      duration: duration,
+    );
+    return true;
+  }
+
   void prepareIndexByAnchor(List<Widget> widgets) {
     if (_anchors.isEmpty) {
       return;
@@ -291,6 +434,9 @@ mixin AnchorWidgetFactory on WidgetFactoryResetter {
 
   Future<bool> onTapAnchorWrapper(String id) =>
       onTapAnchor(id, _registry.ensureVisible);
+
+  Future<bool> onTapAnchorWrapperV2(String id) =>
+      onTapAnchor(id, _registry.ensureVisibleV2);
 
   Future<bool> onTapAnchor(String id, EnsureVisible scrollTo) => scrollTo(id);
 
